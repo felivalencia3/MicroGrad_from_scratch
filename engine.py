@@ -1,7 +1,11 @@
+import math
+
+
 class Value:
     def __init__(self, data, _children=(), _op="", label="") -> None:
         self.data = data
         self.grad = 0.0
+        self._backward = lambda: None
         self._prev = set(_children)
         self._op = _op
         self.label = label
@@ -11,14 +15,34 @@ class Value:
 
     def __add__(self, other):
         out = Value(self.data + other.data, (self, other), "+")
+
+        def _backward():
+            self.grad = 1.0 * out.grad
+            other.grad = 1.0 * out.grad
+
+        out._backward = _backward
         return out
 
-    def __sub__(self, other):
-        out = Value(self.data - other.data, (self, other), "-")
-        return out
 
     def __mul__(self, other):
         out = Value(self.data * other.data, (self, other), "*")
+
+        def _backward():
+            self.grad = other.data * out.grad
+            self.data = self.data * out.grad
+
+        out._backward = _backward
+        return out
+
+    def tanh(self):
+        n = self.data
+        t = (math.exp(2 * n) - 1) / (math.exp(2 * n) + 1)
+        out = Value(t, (self,), "tanh")
+
+        def _backward():
+            self.grad = (1 - t**2) * out.grad
+
+        out._backward = _backward
         return out
 
 
@@ -47,7 +71,11 @@ def draw_dot(root):
     nodes, edges = trace(root)
     for n in nodes:
         uid = str(id(n))
-        dot.node(name=uid, label="{%s | data %.4f | grad %.4f}" % (n.label, n.data, n.grad), shape="record")
+        dot.node(
+            name=uid,
+            label="{%s | data %.4f | grad %.4f}" % (n.label, n.data, n.grad),
+            shape="record",
+        )
         if n._op:
             dot.node(name=uid + n._op, label=n._op)
             dot.edge(uid + n._op, uid)
@@ -55,35 +83,73 @@ def draw_dot(root):
         dot.edge(str(id(n1)), str(id(n2)) + n2._op)
     dot.render("graph", view=True)
 
+
 a = Value(2.0, label="a")
 b = Value(-3.0, label="b")
 c = Value(10.0, label="c")
-e = a * b; e.label = "e"
-d = e + c; d.label = "d"
+e = a * b
+e.label = "e"
+d = e + c
+d.label = "d"
 f = Value(-2.0, label="f")
-L = d * f; L.label = "L"
+L = d * f
+L.label = "L"
 L.grad = 1.0
+
 
 def differential():
     h = 0.0000001
     a = Value(2.0, label="a")
     b = Value(-3.0, label="b")
     c = Value(10.0, label="c")
-    e = a * b; e.label = "e"
-    d = e + c; d.label = "d"
+    e = a * b
+    e.label = "e"
+    d = e + c
+    d.label = "d"
     f = Value(-2.0, label="f")
-    L = d * f; L.label = "L"
+    L = d * f
+    L.label = "L"
     L1 = L.data
 
     a = Value(2.0 + h, label="a")
     b = Value(-3.0, label="b")
     c = Value(10.0, label="c")
-    e = a * b; e.label = "e"
-    d = e + c; d.label = "d"
+    e = a * b
+    e.label = "e"
+    d = e + c
+    d.label = "d"
     f = Value(-2.0, label="f")
-    L = d * f; L.label = "L"
+    L = d * f
+    L.label = "L"
     L2 = L.data
     print((L2 - L1) / h)
 
 
+def neuron():
+    x1 = Value(2.0, label="x1")
+    x2 = Value(0.0, label="x2")
+    # weights
+    w1 = Value(-3.0, label="w1")
+    w2 = Value(1.0, label="w2")
+    # bias
+    b = Value(6.8813735870195432, label="b")
 
+    # x1w1 + x2w2 +b
+    x1w1 = x1 * w1
+    x1w1.label = "x1*w1"
+    x2w2 = x2 * w2
+    x2w2.label = "x2*w2"
+    x1w1x2w2 = x1w1 + x2w2
+    x1w1x2w2.label = "x1*w1 + x2*w2"
+    n = x1w1x2w2 + b; n.label = "n"
+    o = n.tanh(); o.label = "o"
+    o.grad = 1.0
+    o._backward() 
+    n._backward()
+
+    draw_dot(o)
+
+def topological_sort():
+    pass
+
+neuron()
